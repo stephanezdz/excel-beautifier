@@ -32,6 +32,7 @@ with st.sidebar:
     
     st.divider()
     
+    # Options de personnalisation (définies uniquement si fichier uploadé)
     if uploaded_file:
         # Charger et afficher le fichier avant traitement
         try:
@@ -75,8 +76,7 @@ with st.sidebar:
             
             if st.button("✨ Embellir le fichier", type="primary", use_container_width=True):
                 st.info("🔄 Traitement en cours...")
-                process_excel(uploaded_file, theme, header_size, bold, alignment)
-        
+                process_excel(uploaded_file.getvalue(), theme, header_size, bold, alignment)
         except Exception as e:
             st.error(f"❌ Erreur lors de la lecture du fichier : {str(e)}")
     
@@ -90,10 +90,10 @@ with st.sidebar:
     """)
 
 # Fonction principale de traitement
-def process_excel(file, theme, header_size, bold, alignment):
+def process_excel(file_bytes, theme, header_size, bold, alignment):
     try:
-        # Charger le workbook
-        wb = load_workbook(file, read_only=False)
+        # Charger le workbook depuis les bytes
+        wb = load_workbook(file_bytes, read_only=False)
         ws = wb.active
         
         # Définition des couleurs par thème
