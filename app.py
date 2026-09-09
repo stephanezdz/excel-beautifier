@@ -93,23 +93,8 @@ def process_excel(file_bytes, theme, header_size, bold, alignment):
         st.success("✨ Fichier embellit avec succès !")
         st.markdown("---")
         
-        # Bouton de téléchargement
-        st.download_button(
-            label="📥 Télécharger le fichier embellie",
-            data=output,
-            file_name=f"beautified_{uploaded_file.name}",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
-        
-        # Option pour télécharger avec le nom original
-        st.download_button(
-            label="📥 Télécharger avec le nom original",
-            data=output,
-            file_name=uploaded_file.name,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
+        # Retour du fichier au lieu d'appel direct à st.download_button()
+        return output
         
         # Prévisualisation du fichier
         st.markdown("---")
@@ -195,7 +180,16 @@ with st.sidebar:
             
             if st.button("✨ Embellir le fichier", type="primary", use_container_width=True):
                 st.info("🔄 Traitement en cours...")
-                process_excel(uploaded_file.getvalue(), theme, header_size, bold, alignment)
+                output_file = process_excel(uploaded_file.getvalue(), theme, header_size, bold, alignment)
+                
+                # Boutons de téléchargement
+                st.download_button(
+                    label="📥 Télécharger le fichier embellie",
+                    data=output_file,
+                    file_name=f"beautified_{uploaded_file.name}",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
         except Exception as e:
             st.error(f"❌ Erreur lors de la lecture du fichier : {str(e)}")
     
