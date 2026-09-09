@@ -5,14 +5,17 @@ La mise en forme vit entièrement dans embellir(), qui ne connaît pas Streamlit
 elle prend des octets, rend des octets. Toute l'interface est en dessous.
 """
 
+import os
 import random
 from datetime import date, datetime
+from functools import lru_cache
 from io import BytesIO
 
 import pandas as pd
 import streamlit as st
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from PIL import Image, ImageDraw, ImageFont
 
 # ══════════════════════════════════════════════════════════════════════
 #  LES PALETTES
@@ -198,6 +201,204 @@ def palette_du_niveau(niveau, index):
 
 
 # ══════════════════════════════════════════════════════════════════════
+#  L'APERÇU — redessine la feuille telle qu'Excel l'afficherait.
+#
+#  Un tableau Streamlit ne montre que les données : ni couleurs, ni
+#  largeurs, ni alignements. On redessine donc la feuille à partir des
+#  styles réellement écrits dans le fichier, pour juger avant d'ouvrir
+#  Excel.
+# ══════════════════════════════════════════════════════════════════════
+
+LIGNES_APERCU = 12
+COLONNES_APERCU = 15
+
+# La première police trouvée gagne. Sur Streamlit Cloud c'est DejaVu (voir
+# packages.txt), sur un Mac c'est Arial.
+# /!\ La police de secours de Pillow NE CONNAÎT PAS LES ACCENTS : « Quantité »
+# y devient « Quantit▯ ». Il faut donc une vraie police, d'où la fouille du
+# dossier système en dernier recours.
+_POLICES = [
+    ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+    ("/System/Library/Fonts/Supplemental/Arial.ttf",
+     "/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
+    ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
+    ("/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+     "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf"),
+    ("/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+     "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf"),
+    ("/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+     "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf"),
+    ("/Library/Fonts/Arial.ttf", "/Library/Fonts/Arial Bold.ttf"),
+]
+
+_DOSSIERS_POLICES = ("/usr/share/fonts", "/usr/local/share/fonts",
+                     "/System/Library/Fonts", "/Library/Fonts")
+
+
+ACCENTS = "éèàçùÉÀÎœ"
+
+
+def _dessin_du_caractere(police, caractere):
+    vignette = Image.new("L", (48, 48), 0)
+    ImageDraw.Draw(vignette).text((4, 4), caractere, font=police, fill=255)
+    return vignette.tobytes()
+
+
+def _sait_ecrire_le_francais(chemin):
+    """
+    Une police peut exister sans connaître nos accents : le système en contient
+    des dizaines réservées à d'autres écritures. On dessine donc un « é » et on
+    le compare au dessin d'un caractère qui n'existe dans aucune police. Si
+    c'est le même trait, c'est le carré du glyphe manquant.
+    """
+    try:
+        essai = ImageFont.truetype(chemin, 24)
+        manquant = _dessin_du_caractere(essai, "\ue000")
+        return all(_dessin_du_caractere(essai, c) != manquant for c in ACCENTS)
+    except Exception:
+        return False
+
+
+@lru_cache(maxsize=1)
+def _police_trouvee():
+    """(régulière, grasse) : la meilleure paire installée qui gère le français."""
+    for regulier, epais in _POLICES:
+        if os.path.exists(regulier) and _sait_ecrire_le_francais(regulier):
+            return regulier, (epais if os.path.exists(epais) else regulier)
+
+    # Rien aux emplacements connus : on fouille le système.
+    candidates = []
+    for racine in _DOSSIERS_POLICES:
+        if not os.path.isdir(racine):
+            continue
+        for dossier, _, fichiers in os.walk(racine):
+            for nom in fichiers:
+                if nom.lower().endswith((".ttf", ".otf")):
+                    candidates.append(os.path.join(dossier, nom))
+
+    familles = ("dejavusans", "liberationsans", "notosans", "freesans",
+                "arial", "helvetica", "roboto", "opensans")
+
+    def famille_de(chemin):
+        """« Arial Bold.ttf » et « DejaVuSans-Bold.ttf » -> « arial », « dejavusans »."""
+        nom = os.path.splitext(os.path.basename(chemin))[0].lower()
+        nom = nom.replace(" ", "").replace("_", "").split("-")[0]
+        for suffixe in ("bold", "regular", "italic", "oblique"):
+            if nom.endswith(suffixe) and len(nom) > len(suffixe):
+                nom = nom[: -len(suffixe)]
+        return nom
+
+    def rang(chemin):
+        nom = os.path.basename(chemin).lower()
+        f = famille_de(chemin)
+        return (familles.index(f) if f in familles else len(familles), "bold" in nom)
+
+    candidates.sort(key=rang)
+    for chemin in candidates[:60]:
+        if _sait_ecrire_le_francais(chemin):
+            f = famille_de(chemin)
+            epais = next((c for c in candidates
+                          if famille_de(c) == f and "bold" in os.path.basename(c).lower()),
+                         chemin)
+            return chemin, epais
+    return None, None
+
+
+@lru_cache(maxsize=64)
+def _police(taille, gras):
+    regulier, epais = _police_trouvee()
+    chemin = epais if gras else regulier
+    if chemin:
+        try:
+            return ImageFont.truetype(chemin, taille)
+        except OSError:
+            pass
+    try:
+        return ImageFont.load_default(size=taille)   # /!\ accents non gérés
+    except TypeError:                                 # Pillow antérieur à 10.1
+        return ImageFont.load_default()
+
+
+def _couleur(objet, defaut=None):
+    """openpyxl rend les couleurs en AARRGGBB ; on ne garde que RRGGBB."""
+    try:
+        rgb = objet.rgb
+        if isinstance(rgb, str) and len(rgb) == 8:
+            return "#" + rgb[2:]
+    except Exception:
+        pass
+    return defaut
+
+
+def apercu_image(octets_xlsx, echelle=2):
+    """Dessine les premières lignes de la feuille, styles compris."""
+    feuille = load_workbook(BytesIO(octets_xlsx)).active
+    nb_lignes = min(feuille.max_row, LIGNES_APERCU + 1)
+    nb_colonnes = min(feuille.max_column, COLONNES_APERCU)
+
+    px_car = 7.6 * echelle      # largeur Excel (en caractères) -> pixels
+    px_pt = 1.34 * echelle      # hauteur de ligne (en points)  -> pixels
+    marge = 16 * echelle
+
+    largeurs, hauteurs = [], []
+    for colonne in range(1, nb_colonnes + 1):
+        lettre = feuille.cell(row=1, column=colonne).column_letter
+        mesure = feuille.column_dimensions.get(lettre)
+        largeurs.append(int((mesure.width if mesure and mesure.width else 10) * px_car))
+    for ligne in range(1, nb_lignes + 1):
+        mesure = feuille.row_dimensions.get(ligne)
+        hauteurs.append(int((mesure.height if mesure and mesure.height else 18) * px_pt))
+
+    image = Image.new("RGB", (sum(largeurs) + 2 * marge, sum(hauteurs) + 2 * marge), "#FFFFFF")
+    crayon = ImageDraw.Draw(image)
+
+    y = marge
+    for ligne in range(1, nb_lignes + 1):
+        x = marge
+        for colonne in range(1, nb_colonnes + 1):
+            cellule = feuille.cell(row=ligne, column=colonne)
+            largeur, hauteur = largeurs[colonne - 1], hauteurs[ligne - 1]
+
+            if cellule.fill and cellule.fill.fill_type == "solid":
+                fond = _couleur(cellule.fill.fgColor)
+                if fond:
+                    crayon.rectangle([x, y, x + largeur, y + hauteur], fill=fond)
+
+            bordure = cellule.border
+            epaisseur = max(1, echelle // 2)
+            if bordure.left and bordure.left.style:
+                crayon.line([x, y, x, y + hauteur],
+                            fill=_couleur(bordure.left.color, "#CCCCCC"), width=epaisseur)
+            if bordure.bottom and bordure.bottom.style:
+                crayon.line([x, y + hauteur, x + largeur, y + hauteur],
+                            fill=_couleur(bordure.bottom.color, "#CCCCCC"), width=epaisseur)
+
+            contenu = _lisible(cellule.value)
+            if contenu:
+                police = _police(int((cellule.font.size or 11) * 1.34 * echelle),
+                                 bool(cellule.font.bold))
+                mesure_texte = crayon.textlength(contenu, font=police)
+                retrait = (cellule.alignment.indent or 0) * px_car
+                place = cellule.alignment.horizontal or "left"
+                if place == "right":
+                    tx = x + largeur - retrait - mesure_texte
+                elif place == "center":
+                    tx = x + (largeur - mesure_texte) / 2
+                else:
+                    tx = x + retrait
+                cadre = police.getbbox("Ag")
+                ty = y + (hauteur - (cadre[3] - cadre[1])) / 2 - cadre[1]
+                crayon.text((tx, ty), contenu, font=police,
+                            fill=_couleur(cellule.font.color, "#000000"))
+            x += largeur
+        y += hauteurs[ligne - 1]
+
+    return image, feuille.max_row - 1, feuille.max_column
+
+
+# ══════════════════════════════════════════════════════════════════════
 #  L'INTERFACE
 # ══════════════════════════════════════════════════════════════════════
 
@@ -289,21 +490,51 @@ with st.sidebar:
                 st.session_state.resultat = None
                 st.error(f"❌ Erreur lors du traitement : {erreur}")
 
-# ─── La zone principale : le fichier, puis le résultat ───────────────
+# ─── La zone principale : l'aperçu vivant, puis le fichier à emporter ─
+
+@st.cache_data(show_spinner=False)
+def _apercu_cache(octets, niveau, nom_palette, taille_entete):
+    """Refait à chaque changement de réglage, donc gardé en mémoire."""
+    palette = next(p for p in NIVEAUX[niveau]["palettes"] if p["nom"] == nom_palette)
+    fichier_mis_en_forme = embellir(octets, niveau, palette, taille_entete).getvalue()
+    return apercu_image(fichier_mis_en_forme)
+
 
 if not fichier:
     st.info("👈 Commencez par déposer un fichier Excel dans le panneau de gauche.")
 else:
+    st.subheader("👁️ Aperçu de la mise en forme")
     try:
-        apercu = pd.read_excel(fichier, engine="openpyxl")
-        st.subheader("📊 Le fichier d'origine")
-        st.dataframe(apercu, use_container_width=True)
+        image, total_lignes, total_colonnes = _apercu_cache(
+            fichier.getvalue(), niveau, palette["nom"], taille_entete
+        )
+        st.image(image, use_container_width=True)
+
+        limites = []
+        if total_lignes > LIGNES_APERCU:
+            limites.append(f"{LIGNES_APERCU} premières lignes sur {total_lignes}")
+        if total_colonnes > COLONNES_APERCU:
+            limites.append(f"{COLONNES_APERCU} premières colonnes sur {total_colonnes}")
+        st.caption(
+            "Couleurs, largeurs et alignements réels."
+            + (" Aperçu limité aux " + " et aux ".join(limites) + "." if limites else "")
+            + " Le fichier téléchargé contient tout."
+        )
     except Exception as erreur:
-        st.error(f"❌ Erreur lors de la lecture du fichier : {erreur}")
+        st.error(f"❌ Impossible de dessiner l'aperçu : {erreur}")
+
+    with st.expander("📊 Voir les données d'origine"):
+        try:
+            st.dataframe(
+                pd.read_excel(BytesIO(fichier.getvalue()), engine="openpyxl"),
+                use_container_width=True,
+            )
+        except Exception as erreur:
+            st.error(f"❌ Erreur lors de la lecture du fichier : {erreur}")
 
     if st.session_state.resultat:
         st.divider()
-        st.success(f"✨ Fichier embelli — {st.session_state.resultat_legende}")
+        st.success(f"✨ Fichier prêt — {st.session_state.resultat_legende}")
 
         gauche, droite = st.columns(2)
         with gauche:
@@ -322,14 +553,6 @@ else:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
             )
-
-        st.subheader("👁️ Aperçu du résultat")
-        st.caption("Les couleurs et les largeurs n'apparaissent que dans Excel : "
-                   "cet aperçu montre les données, pas la mise en forme.")
-        st.dataframe(
-            pd.read_excel(BytesIO(st.session_state.resultat), engine="openpyxl"),
-            use_container_width=True,
-        )
 
 st.markdown("---")
 st.markdown(
