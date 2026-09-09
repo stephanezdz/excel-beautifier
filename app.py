@@ -34,46 +34,51 @@ with st.sidebar:
     
     if uploaded_file:
         # Charger et afficher le fichier avant traitement
-        data = pd.read_excel(uploaded_file)
-        st.success("✅ Fichier chargé avec succès !")
+        try:
+            # Lire le fichier Excel correctement
+            data = pd.read_excel(uploaded_file, engine='openpyxl')
+            st.success("✅ Fichier chargé avec succès !")
+            
+            # Prévisualisation
+            st.subheader("📊 Aperçu du fichier")
+            st.dataframe(data, use_container_width=True)
+            
+            st.divider()
+            
+            # Options de personnalisation
+            st.subheader("⚙️ Options")
+            
+            theme = st.selectbox(
+                "🎨 Choisir un thème",
+                ["Professionnel", "Moderne", "Épuré"],
+                index=0
+            )
+            
+            header_size = st.slider(
+                "🔤 Taille police en-tête",
+                10, 30, 14,
+                1
+            )
+            
+            bold = st.checkbox(
+                "🔤 Police grasse",
+                value=True
+            )
+            
+            alignment = st.selectbox(
+                "📝 Alignement en-têtes",
+                ["Centré", "Gauche", "Droite"],
+                index=0
+            )
+            
+            st.divider()
+            
+            if st.button("✨ Embellir le fichier", type="primary", use_container_width=True):
+                st.info("🔄 Traitement en cours...")
+                process_excel(uploaded_file, theme, header_size, bold, alignment)
         
-        # Prévisualisation
-        st.subheader("📊 Aperçu du fichier")
-        st.dataframe(data, use_container_width=True)
-        
-        st.divider()
-        
-        # Options de personnalisation
-        st.subheader("⚙️ Options")
-        
-        theme = st.selectbox(
-            "🎨 Choisir un thème",
-            ["Professionnel", "Moderne", "Épuré"],
-            index=0
-        )
-        
-        header_size = st.slider(
-            "🔤 Taille police en-tête",
-            10, 30, 14,
-            1
-        )
-        
-        bold = st.checkbox(
-            "🔤 Police grasse",
-            value=True
-        )
-        
-        alignment = st.selectbox(
-            "📝 Alignement en-têtes",
-            ["Centré", "Gauche", "Droite"],
-            index=0
-        )
-        
-        st.divider()
-        
-        if st.button("✨ Embellir le fichier", type="primary", use_container_width=True):
-            st.info("🔄 Traitement en cours...")
-            process_excel(uploaded_file, theme, header_size, bold, alignment)
+        except Exception as e:
+            st.error(f"❌ Erreur lors de la lecture du fichier : {str(e)}")
     
     st.divider()
     
@@ -88,7 +93,7 @@ with st.sidebar:
 def process_excel(file, theme, header_size, bold, alignment):
     try:
         # Charger le workbook
-        wb = load_workbook(file)
+        wb = load_workbook(file, read_only=False)
         ws = wb.active
         
         # Définition des couleurs par thème
@@ -195,7 +200,7 @@ def process_excel(file, theme, header_size, bold, alignment):
         st.subheader("👁️ Aperçu du résultat")
         
         # Créer un DataFrame pour prévisualisation
-        preview_data = pd.read_excel(output)
+        preview_data = pd.read_excel(output, engine='openpyxl')
         st.dataframe(preview_data, use_container_width=True)
         
     except Exception as e:
