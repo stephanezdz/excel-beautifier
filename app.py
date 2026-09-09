@@ -513,12 +513,13 @@ with st.sidebar:
 
 # ─── La zone principale : l'aperçu vivant, puis le fichier à emporter ─
 
-@st.cache_data(show_spinner=False)
-def _apercu_cache(octets, niveau, nom_palette, taille_entete):
-    """Refait à chaque changement de réglage, donc gardé en mémoire."""
-    palette = next(p for p in NIVEAUX[niveau]["palettes"] if p["nom"] == nom_palette)
-    fichier_mis_en_forme = embellir(octets, niveau, palette, taille_entete).getvalue()
-    return apercu_image(fichier_mis_en_forme)
+# /!\ PAS de @st.cache_data ici. Streamlit garde en mémoire les résultats d'une
+# fonction tant que le texte DE CETTE fonction n'a pas bougé — il ne regarde pas
+# les fonctions qu'elle appelle. Après une correction du moteur, l'aperçu
+# continuait donc d'afficher l'ancienne image. Dessiner douze lignes coûte un
+# dixième de seconde : ça ne vaut pas ce piège.
+def _apercu(octets, niveau, palette, taille_entete):
+    return apercu_image(embellir(octets, niveau, palette, taille_entete).getvalue())
 
 
 if not fichier:
@@ -526,8 +527,8 @@ if not fichier:
 else:
     st.subheader("👁️ Aperçu de la mise en forme")
     try:
-        image, total_lignes, total_colonnes = _apercu_cache(
-            fichier.getvalue(), niveau, palette["nom"], taille_entete
+        image, total_lignes, total_colonnes = _apercu(
+            fichier.getvalue(), niveau, palette, taille_entete
         )
         st.image(image, use_container_width=True)
 
