@@ -1,0 +1,20 @@
+# Bibliotheques reinstallables : jamais dans le depot
+node_modules/
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Constructions
+dist/
+build/
+*.egg-info/
+
+# Secrets et reglages locaux
+.env
+.env.local
+*.key
+
+# Systeme
+.DS_Store
+Thumbs.db
