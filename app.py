@@ -93,16 +93,17 @@ def process_excel(file_bytes, theme, header_size, bold, alignment):
         st.success("✨ Fichier embellit avec succès !")
         st.markdown("---")
         
-        # Retour du fichier au lieu d'appel direct à st.download_button()
-        return output
-        
         # Prévisualisation du fichier
-        st.markdown("---")
         st.subheader("👁️ Aperçu du résultat")
         
         # Créer un DataFrame pour prévisualisation
         preview_data = pd.read_excel(output, engine='openpyxl')
         st.dataframe(preview_data, use_container_width=True)
+        
+        # /!\ pd.read_excel a vidé le flux : le remettre au début, sinon le
+        # bouton de téléchargement renvoie un fichier de 0 octet.
+        output.seek(0)
+        return output
         
     except Exception as e:
         st.error(f"❌ Erreur lors du traitement : {str(e)}")
@@ -182,14 +183,25 @@ with st.sidebar:
                 st.info("🔄 Traitement en cours...")
                 output_file = process_excel(uploaded_file.getvalue(), theme, header_size, bold, alignment)
                 
-                # Boutons de téléchargement
-                st.download_button(
-                    label="📥 Télécharger le fichier embellie",
-                    data=output_file,
-                    file_name=f"beautified_{uploaded_file.name}",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
-                )
+                # Boutons de téléchargement (rien à proposer si le traitement a échoué)
+                if output_file is not None:
+                    donnees = output_file.getvalue()
+                    
+                    st.download_button(
+                        label="📥 Télécharger le fichier embelli",
+                        data=donnees,
+                        file_name=f"beautified_{uploaded_file.name}",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+                    
+                    st.download_button(
+                        label="📥 Télécharger avec le nom original",
+                        data=donnees,
+                        file_name=uploaded_file.name,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
         except Exception as e:
             st.error(f"❌ Erreur lors de la lecture du fichier : {str(e)}")
     
