@@ -107,10 +107,20 @@ def _alignement_du_type(type_colonne):
     return {"nombre": "right", "date": "center", "texte": "left"}[type_colonne]
 
 
-def _largeur_colonne(titre, valeurs):
-    """Ajustée au contenu le plus long, entre 10 et 50 caractères, marges comprises."""
-    longueurs = [len(_lisible(titre))] + [len(_lisible(v)) for v in valeurs]
-    return max(10, min(50, max(longueurs) + 4))
+# Excel mesure une largeur en « caractères » de la police du corps, à 11 points.
+# Un en-tête à 14 points et en gras occupe donc PLUS de place que sa longueur
+# ne le laisse croire : sans ce calcul, « Quantité » déborde sur la colonne
+# voisine. Le 1,08 est le surcoût du gras.
+TAILLE_CORPS = 11
+SURCOUT_GRAS = 1.08
+MARGES = 2          # le retrait à gauche et l'air à droite
+
+
+def _largeur_colonne(titre, valeurs, taille_entete=14):
+    """Ajustée au plus encombrant des deux : l'en-tête ou le contenu."""
+    besoin_entete = len(_lisible(titre)) * (taille_entete / TAILLE_CORPS) * SURCOUT_GRAS
+    besoin_corps = max((len(_lisible(v)) for v in valeurs), default=0)
+    return max(10, min(50, max(besoin_entete, besoin_corps) + MARGES + 2))
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -150,7 +160,7 @@ def embellir(file_bytes, niveau, palette, taille_entete=14):
         type_colonne = _type_colonne(corps)
         alignement = _alignement_du_type(type_colonne)
         lettre = feuille.cell(row=1, column=colonne).column_letter
-        feuille.column_dimensions[lettre].width = _largeur_colonne(titre, corps)
+        feuille.column_dimensions[lettre].width = _largeur_colonne(titre, corps, taille_entete)
 
         # L'en-tête suit l'alignement de sa colonne, pas sa propre nature.
         entete = feuille.cell(row=1, column=colonne)
@@ -338,8 +348,14 @@ def apercu_image(octets_xlsx, echelle=2):
     nb_lignes = min(feuille.max_row, LIGNES_APERCU + 1)
     nb_colonnes = min(feuille.max_column, COLONNES_APERCU)
 
-    px_car = 7.6 * echelle      # largeur Excel (en caractères) -> pixels
-    px_pt = 1.34 * echelle      # hauteur de ligne (en points)  -> pixels
+    px_pt = 1.34 * echelle      # hauteur de ligne (en points) -> pixels
+    # La largeur d'une colonne Excel se compte en « 0 » de la police du corps.
+    # On la MESURE au lieu de la deviner : DejaVu (Linux) est plus large
+    # qu'Arial (Mac), et une constante ferait mentir l'aperçu sur l'une des deux.
+    try:
+        px_car = _police(int(TAILLE_CORPS * 1.34 * echelle), False).getlength("0")
+    except Exception:
+        px_car = 7.6 * echelle
     marge = 16 * echelle
 
     largeurs, hauteurs = [], []
@@ -377,8 +393,13 @@ def apercu_image(octets_xlsx, echelle=2):
 
             contenu = _lisible(cellule.value)
             if contenu:
-                police = _police(int((cellule.font.size or 11) * 1.34 * echelle),
+                police = _police(int((cellule.font.size or TAILLE_CORPS) * 1.34 * echelle),
                                  bool(cellule.font.bold))
+                place_libre = largeur - 2 * (cellule.alignment.indent or 0) * px_car
+                while contenu and crayon.textlength(contenu, font=police) > place_libre:
+                    contenu = contenu[:-1]      # jamais de débordement sur la voisine
+                    if contenu:
+                        contenu = contenu[:-1] + "…"
                 mesure_texte = crayon.textlength(contenu, font=police)
                 retrait = (cellule.alignment.indent or 0) * px_car
                 place = cellule.alignment.horizontal or "left"
