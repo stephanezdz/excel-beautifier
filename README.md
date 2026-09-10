@@ -24,9 +24,9 @@ Déployé sur [Streamlit Cloud](https://excel-beautifier.streamlit.app)
 
 ## 🛠️ Technologies
 
-- **Frontend:** Streamlit
-- **Backend:** Python
-- **Librairies:** pandas, openpyxl, xlsxwriter
+- **Application :** Streamlit, un seul fichier (`app.py`)
+- **Librairies :** pandas, openpyxl, pillow
+- **Avant tout envoi :** `./publier.sh "ce que j'ai changé"` (voir [CONTRIBUER.md](CONTRIBUER.md))
 
 ## 📁 Fichiers
 

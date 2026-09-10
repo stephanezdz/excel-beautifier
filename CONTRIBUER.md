@@ -7,14 +7,14 @@ Ces règles valent pour tout le monde : Hermès, Claude Code, ou Stéphane.
 Un seul fichier fait tourner tout ce qui est en ligne sur
 [excel-beautifier.streamlit.app](https://excel-beautifier.streamlit.app).
 
-⚠️ **Les dossiers `backend/` et `frontend/` sont abandonnés.** Ce sont les
-restes d'une première version en React et FastAPI, remplacée par Streamlit.
-`app.py` ne les appelle jamais. `deploy.py`, `deploy.md` et
-`DEPLOY_INSTRUCTIONS.md` visent Hugging Face, où le projet n'est pas déployé.
+Le dépôt a contenu, jusqu'au 10/09, deux versions mortes du même produit :
+un `frontend/` en React et un `backend/` en FastAPI, plus des instructions de
+déploiement vers Hugging Face. Tout a été supprimé, parce qu'il fallait
+deviner laquelle des trois versions était vivante — et deviner, ça se rate.
 
-👉 **« Mets tout à jour » ne veut donc rien dire ici** : il y a trois versions
-du même produit dans le dépôt, et deux sont mortes. Ne travaille que sur
-`app.py`, `requirements.txt` et `packages.txt`.
+👉 **Ne travaille que sur `app.py`, `requirements.txt` et `packages.txt`.**
+Si tu vois réapparaître un dossier de code qui n'est pas appelé par `app.py`,
+c'est une erreur : signale-le au lieu de le mettre à jour.
 
 ## Une seule commande avant d'envoyer
 
