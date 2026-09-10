@@ -1,0 +1,7 @@
+#!/bin/sh
+# Filet de sécurité : refuse un enregistrement si le contrôle ne passe pas.
+# Posé une fois par : git config core.hooksPath outils/hooks
+# Pour passer outre exceptionnellement : git commit --no-verify
+RACINE=$(git rev-parse --show-toplevel)
+PYTHON=$("$RACINE/outils/trouver-python.sh") || exit 1
+exec "$PYTHON" "$RACINE/outils/verifier.py"
