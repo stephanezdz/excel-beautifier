@@ -1,0 +1,32 @@
+name: Contrôle
+
+# Le même contrôle que celui qui tourne sur la machine, rejoué par GitHub à
+# chaque envoi. C'est le filet de secours : il attrape ce qui serait passé
+# avec « git commit --no-verify ».
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verifier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      # Une police capable d'écrire les accents, sinon l'aperçu affiche
+      # « Quantit▯ ». C'est la même que celle demandée par packages.txt.
+      - name: Installer une police française
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-dejavu-core
+
+      - name: Installer les bibliothèques
+        run: pip install -q -r requirements.txt
+
+      - name: Contrôle avant envoi
+        run: python3 outils/verifier.py
