@@ -31,8 +31,24 @@ Pour contrôler sans rien envoyer :
 python3 outils/verifier.py
 ```
 
-Sept contrôles, chacun correspondant à une panne réellement arrivée sur ce
+Huit contrôles, chacun correspondant à une panne réellement arrivée sur ce
 projet. Le détail est en commentaire dans le fichier.
+
+## Le piège du gras, et de toute mise en forme
+
+openpyxl **refuse de modifier un style en place**. On en fabrique un neuf, on
+ne part jamais de celui de la cellule :
+
+```python
+cellule.font = Font(bold=True, size=12)   # ✅ un style neuf
+cellule.font = cellule.font.bold          # ❌ s'enregistre, ne met rien en gras
+cellule.font.bold = True                  # ❌ openpyxl lève une erreur
+```
+
+La première forme fautive est la pire : **aucune erreur, le fichier est bien
+enregistré, et rien n'est en gras**. Elle ne se voit qu'en relisant le fichier
+produit. Le contrôle le fait maintenant à ta place, sur les 14 combinaisons, et
+relit aussi le code : les deux formes sont refusées à l'envoi.
 
 ## Ce qui est interdit
 

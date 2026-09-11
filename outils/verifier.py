@@ -2,7 +2,7 @@
 """
 Le filet de sécurité d'Excel Beautifier.
 
-Une seule commande, sept contrôles, une réponse claire : ça passe ou ça ne
+Une seule commande, huit contrôles, une réponse claire : ça passe ou ça ne
 passe pas. Chaque contrôle correspond à une panne qui est VRAIMENT arrivée
 sur ce projet — rien n'est là par principe.
 
@@ -144,7 +144,7 @@ def _():
     globals()["app"] = app
 
 
-@controle("le moteur produit un vrai fichier Excel, sur tous les niveaux")
+@controle("le moteur produit un vrai fichier Excel, en-tête en gras comprise")
 def _():
     # 🪤 Ce contrôle attrape les deux autres bugs du 09/09 : le classeur lu en
     #    octets bruts au lieu d'un BytesIO, et le flux vidé par l'aperçu qui
@@ -165,6 +165,17 @@ def _():
                 return False, f"{niveau} / {palette['nom']} : feuille vide"
             if feuille.freeze_panes != "A2":
                 return False, f"{niveau} / {palette['nom']} : l'en-tête n'est pas figé"
+            # 🪤 Le gras se relit DANS LE FICHIER, jamais dans le code. Le 11/09,
+            #    le modèle local a écrit « cellule.font = cellule.font.bold » 3 fois
+            #    sur 6 : aucune erreur, fichier enregistré, rien en gras.
+            entetes = [c for c in feuille[1] if c.value is not None]
+            if not entetes:
+                return False, f"{niveau} / {palette['nom']} : en-tête vide"
+            fades = [c.coordinate for c in entetes if not (c.font and c.font.bold)]
+            if fades:
+                return False, (f"{niveau} / {palette['nom']} : l'en-tête n'est PAS en gras "
+                               f"({', '.join(fades[:6])}). Le fichier s'enregistre quand même : "
+                               "c'est une panne muette, elle ne se voit qu'ici.")
             testes += 1
     return f"{testes} combinaisons"
 
@@ -218,6 +229,53 @@ def _():
             trouves.append(chemin)
     if trouves:
         return False, "à supprimer ou à ranger : " + ", ".join(trouves)
+
+
+@controle("aucun style Excel écrit de travers")
+def _():
+    # 🪤 « cellule.font = cellule.font.bold » ne lève aucune erreur, s'enregistre
+    #    sans rien signaler, et ne met rien en gras. C'est la faute que le modèle
+    #    local fait une fois sur deux (mesuré au banc d'essai le 11/09).
+    #    openpyxl refuse de modifier un style en place : il faut en fabriquer un
+    #    neuf — Font(bold=True, ...), jamais partir de celui de la cellule.
+    import ast
+    STYLES = {"font", "fill", "border", "alignment"}
+
+    def lit_un_style(noeud):
+        """Vrai si l'expression va chercher le style d'une cellule."""
+        while isinstance(noeud, ast.Attribute):
+            if noeud.attr in STYLES:
+                return True
+            noeud = noeud.value
+        return False
+
+    fautes = []
+    arbre = ast.parse(open("app.py", encoding="utf-8").read())
+    for noeud in ast.walk(arbre):
+        if not isinstance(noeud, ast.Assign):
+            continue
+        for cible in noeud.targets:
+            if not isinstance(cible, ast.Attribute):
+                continue
+            # cellule.font.bold = True  ->  openpyxl l'interdit
+            if isinstance(cible.value, ast.Attribute) and cible.value.attr in STYLES:
+                fautes.append((noeud.lineno,
+                               f"on modifie {cible.value.attr}.{cible.attr} en place ; "
+                               "il faut réaffecter un style neuf"))
+                continue
+            if cible.attr not in STYLES:
+                continue
+            # cellule.font = cellule.font.bold  ->  s'enregistre, ne fait rien
+            if lit_un_style(noeud.value):
+                fautes.append((noeud.lineno,
+                               f"le nouveau {cible.attr} est lu sur un style existant ; "
+                               "il faut en fabriquer un neuf, par exemple Font(bold=True)"))
+            elif isinstance(noeud.value, ast.Constant):
+                fautes.append((noeud.lineno,
+                               f"{cible.attr} reçoit {noeud.value.value!r} au lieu d'un style"))
+    if fautes:
+        return False, "\n".join(f"app.py ligne {l} : {quoi}" for l, quoi in fautes)
+    return "relu ligne à ligne"
 
 
 @controle("requirements.txt couvre tout ce qu'app.py importe")
